@@ -92,7 +92,7 @@ class ArmEnvironment:
         self.min_movement_threshold = 0.005
 
         self.zero = np.array([0,0,0,0])
-        rospy.init_node('joint_position_node')
+        #rospy.init_node('joint_position_node')
         self.num_joints = 4
         self.state_shape = (self.num_joints + 3,)
         self.action_shape = (self.num_joints,)
@@ -142,7 +142,9 @@ class ArmEnvironment:
         self.sphere.model_xml = self.sphere_urdf
         self.sphere.robot_namespace = 'arm'
         self.sphere_initial_pose = Pose()
-        self.sphere_initial_pose.position.z = 1
+        self.sphere_initial_pose.position.x = self.goal_pos[0]
+        self.sphere_initial_pose.position.y = self.goal_pos[1]
+        self.sphere_initial_pose.position.z = self.goal_pos[2]
         self.sphere.initial_pose = self.sphere_initial_pose 
         self.sphere.reference_frame = 'world'
         rospy.wait_for_service('/gazebo/spawn_urdf_model')
@@ -315,6 +317,7 @@ class ArmEnvironment:
         done = False
         self.reward = self.get_reward(False,False)
         joint_angles, goal_pos, time_runout, arrived = self.get_state()
+        self.goal_pos = goal_pos
         #self.last_joint = self.joint_state
         #self.last_pos = pos
         diff_joint = np.zeros(self.num_joints)
@@ -322,11 +325,13 @@ class ArmEnvironment:
        # self.state = np.concatenate((normed_js,diff_joint,self.orientation,self.angular_vel,self.linear_acc_coeff*self.linear_acc)).reshape(1,-1)
         #self.episode_start_time = rospy.get_time()
         #self.last_action = np.zeros(self.num_joints)
-        state = np.concatenate([joint_angles,goal_pos]).reshape(1, -1)
+        state = np.concatenate([joint_angles,self.goal_pos]).reshape(1, -1)
         self.joint_pos = np.zeros(4)
 
         return state, done
-    
+    def get_goal_pos(self):
+        return self.goal_pos
+        
     def step(self, action):
         action = np.array(action)
         #print("received action: "+str(action))

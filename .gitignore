@@ -3,3 +3,4 @@ devel/
 *.pyc
 .vscode/
 .catkin_workspace
+notes/
