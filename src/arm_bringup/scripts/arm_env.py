@@ -19,7 +19,7 @@ from scipy.spatial import distance
 import numpy as np
 import time
 
-goal_model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', '..', 'arm_description',
+arm_model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', '..', 'arm_description',
                               'urdf', 'arm_gazebo.urdf')
 
 sphere_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', '..', 'arm_description',
@@ -108,8 +108,8 @@ class ArmEnvironment:
             if(np.linalg.norm(self.goal_pos)<0.5):
                 break
         rospy.loginfo("Goal position defined")
-        self.pause_proxy = rospy.ServiceProxy('/gazebo/pause_physics',Empty)
-        self.unpause_proxy = rospy.ServiceProxy('/gazebo/unpause_physics',Empty)
+        self.pause_physics_proxy = rospy.ServiceProxy('/gazebo/pause_physics',Empty)
+        self.unpause_physics_proxy = rospy.ServiceProxy('/gazebo/unpause_physics',Empty)
         self.reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
    
         self.load_controller_proxy = rospy.ServiceProxy('/arm/controller_manager/load_controller', LoadController)
@@ -126,15 +126,15 @@ class ArmEnvironment:
 
         self.del_model = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
         self.spawn_model_proxy = rospy.ServiceProxy('/gazebo/spawn_urdf_model', SpawnModel)
-        self.goal_urdf = open(goal_model_dir, "r").read()
-        self.model = SpawnModelRequest()
-        self.model.model_name = 'arm'  # the same with sdf name
-        self.model.model_xml = self.goal_urdf
-        self.model.robot_namespace = 'arm'
+        self.arm_urdf = open(arm_model_dir, "r").read()
+        self.arm_model = SpawnModelRequest()
+        self.arm_model.model_name = 'arm'  # the same with sdf name
+        self.arm_model.model_xml = self.arm_urdf
+        self.arm_model.robot_namespace = 'arm'
         self.initial_pose = Pose()
         self.initial_pose.position.z = 0.0305
-        self.model.initial_pose = self.initial_pose 
-        self.model.reference_frame = 'world'
+        self.arm_model.initial_pose = self.initial_pose 
+        self.arm_model.reference_frame = 'world'
 
         self.sphere_urdf = open(sphere_dir, "r").read()
         self.sphere = SpawnModelRequest()
@@ -165,15 +165,11 @@ class ArmEnvironment:
         self.joint_pos_mid = self.joint_pos_range/2.0
         self.joint_pos = np.zeros(4)
         self.joint_state = np.zeros(self.num_joints)
-        self.joint_state_subscriber = rospy.Subscriber('/joint_states', JointState, self.joint_state_subscriber_callback)
+        self.joint_state_subscriber = rospy.Subscriber('arm/arm_controller/state', JointTrajectoryControllerState, self.joint_state_subscriber_callback, queue_size=1)
+        rospy.Subscriber()
         self.normed_sp = self.normalize_joint_state(self.starting_pos)
         self.state = np.zeros(self.state_shape)
-        self.diff_state_coeff = 4.0 # TODO find out what this is
-        self.reward_coeff = 20.0 # TODO find out what this is
-        self.action_coeff = 0.5
-        self.reward = 0.0
-        self.done = False
-        self.episode_start_time = 0.0
+       
         
 
     def normalize_joint_state(self, joint_pos):
@@ -196,11 +192,12 @@ class ArmEnvironment:
 
     def joint_state_subscriber_callback(self, joint_state):
         self.joint_state = np.array(joint_state.position)
+        
 
     def pause_physics(self):
         rospy.wait_for_service('/gazebo/pause_physics')
         try:
-            self.pause_proxy()
+            self.pause_physics_proxy()
             return True
         except rospy.ServiceException as e:
             print('/gazebo/pause_physics service call failed')
@@ -209,7 +206,7 @@ class ArmEnvironment:
     def unpause_physics(self):
         rospy.wait_for_service('/gazebo/unpause_physics')
         try:
-            self.unpause_proxy()
+            self.unpause_physics_proxy()
         except rospy.ServiceException as e:
             print('/gazebo/unpause_physics service call failed')
 
@@ -290,7 +287,7 @@ class ArmEnvironment:
         except (rospy.ServiceException) as e:
             print("gazebo/reset_simulation service call failed")
 
-        self.spawn_model(self.model)
+        self.spawn_model(self.arm_model)
         
         rospy.wait_for_service('arm/controller_manager/load_controller')
         try:
