@@ -33,9 +33,10 @@ sphere_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', '.
 class ArmEnv(py_environment.PyEnvironment):
     def __init__(self):
         self.goal_distance_threshold = 0.05
+        self.distance_reward_coeff = 1
 
         self._action_spec = array_spec.BoundedArraySpec(
-            shape=(4,), dtype=np.float32, minimum=-0.5, maximum=0.5, name='action')
+            shape=(4,), dtype=np.float32, minimum=[-0.5,-0.5,-0.5,-0.5], maximum=[-0.5,-0.5,-0.5,0.5], name='action')
         self._observation_spec = array_spec.BoundedArraySpec(
             shape=(7,), dtype=np.float32, minimum=[-1.5,-1.5,-1.5,-2.5,-0.4,-0.4,0], maximum=[1.5,1.5,1.5,2.5,0.4,0.4,0.4], name='observation')
         self.joint_angles = np.zeros(4)
@@ -112,12 +113,12 @@ class ArmEnv(py_environment.PyEnvironment):
 
         action = np.array(action)
         joint_pos = np.clip(self.joint_angles + action,a_min=self.joint_pos_low,a_max=self.joint_pos_high)
-        self.all_joints.move(self.joint_pos)
+        self.all_joints.move(joint_pos)
         #rospy.sleep(0.8)
         reward = self.get_reward()
 
         self.get_state()
-        return ts.transition(self.state, reward=reward, discount=1.0)
+        return ts.transition(self._state, reward=reward, discount=1.0)
     def _reset(self):
         rospy.wait_for_service('/gazebo/delete_model')
         self.del_model('arm')
@@ -154,7 +155,7 @@ class ArmEnv(py_environment.PyEnvironment):
         self._episode_ended = False
         self.get_state()
 
-        return ts.restart(np.array([self._state], dtype=np.float32))
+        return ts.restart(np.array(self._state, dtype=np.float))
 
     def set_new_goal(self):
         rospy.loginfo("Defining a goal position...")
@@ -197,7 +198,7 @@ class ArmEnv(py_environment.PyEnvironment):
     
     def get_state(self):
         # TODO investigate normalizing, e.g. if tf-agents normalizes automatically
-        self._state = np.concatenate([self.joint_angles,self.goal_pos])#.reshape(1,-1)
+        self._state = np.concatenate([self.joint_angles,self.goal_pos]).reshape(7,)
         self._state = self._state.astype(np.float32, copy=False)
         print("SHAPE BOIII",np.shape(self._state))
         # if(self.get_goal_distance()<=self.goal_distance_threshold):
