@@ -24,6 +24,6 @@
     <turnGravityOff>true</turnGravityOff>
   </gazebo>
   <gazebo>
-    <static>true</static>
+    <static>false</static>
   </gazebo>
 </robot>

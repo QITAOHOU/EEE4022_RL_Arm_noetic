@@ -4,3 +4,6 @@ devel/
 .vscode/
 .catkin_workspace
 notes/
+results/
+model_*
+Old Models/
