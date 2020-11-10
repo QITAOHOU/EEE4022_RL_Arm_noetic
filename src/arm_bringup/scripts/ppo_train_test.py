@@ -5,20 +5,44 @@ from arm_env import ArmEnvironment
 import rospy
 import numpy as np
 
+normalise_obs = False
+static_goal = True
+testing = False
+slow_step = True
+
 rospy.init_node("RL_agent")
 parser = OnPolicyTrainer.get_argument()
 parser = PPO.get_argument(parser)
 
-parser.set_defaults(model_dir='model_PPO_static')
-parser.set_defaults(normalise_obs=False)
-parser.set_defaults(save_model_interval=1000)
-parser.set_defaults(horizon=35)
-parser.set_defaults(batch_size=5)
-parser.set_defaults(gpu=0)
+slow_suffix = "_slow" if(slow_step) else ""
+#parser.set_defaults(max_steps=5)
+if(static_goal and normalise_obs):
+    parser.set_defaults(model_dir='model_PPO_static_normed'+slow_suffix)
+    parser.set_defaults(logdir='results/PPO_static_normed'+slow_suffix)
+elif(static_goal):
+    parser.set_defaults(model_dir='model_PPO_static'+slow_suffix)
+    parser.set_defaults(logdir='results/PPO_static'+slow_suffix)
+elif(normalise_obs):
+    parser.set_defaults(model_dir='model_PPO_normed'+slow_suffix)
+    parser.set_defaults(logdir='results/PPO_normed'+slow_suffix)
+else:
+    parser.set_defaults(model_dir='model_PPO'+slow_suffix)
+    parser.set_defaults(logdir='results/PPO'+slow_suffix)
+parser.set_defaults(normalise_obs=normalise_obs)
+parser.set_defaults(save_model_interval=100)
+parser.set_defaults(save_summary_interval=100)
+parser.set_defaults(test_interval=500)
+
+#parser.set_defaults(horizon=1024)
+#parser.set_defaults(batch_size=512)
+parser.set_defaults(gpu=-1)
+parser.set_defaults(max_steps=100000000)
+parser.set_defaults(n_warmup=0)
+#parser.set_defaults(enable_gae=True)
 args = parser.parse_args()
 
-env = ArmEnvironment(static_goal=True)
-test_env = ArmEnvironment(static_goal=True)
+env = ArmEnvironment(static_goal=True,slow_step=slow_step)
+test_env = ArmEnvironment(static_goal=True,slow_step=slow_step)
 
 policy = PPO(
         state_shape=env.observation_space.shape,
@@ -36,12 +60,14 @@ policy = PPO(
         hidden_activation_critic="tanh",
         discount=0.99,
         lam=0.95,
-        entropy_coef=0.,
+        entropy_coef=0.001,
         horizon=args.horizon,
         normalize_adv=args.normalize_adv,
         enable_gae=args.enable_gae,
         gpu=args.gpu)
 trainer = OnPolicyTrainer(policy, env, args, test_env=test_env)
-trainer()
 
-rospy.spin()
+if(testing):
+    trainer.evaluate_policy()
+else:
+    trainer()

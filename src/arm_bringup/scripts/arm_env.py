@@ -30,36 +30,24 @@ sphere_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', '.
 
 class AllJoints:
     def __init__(self,joint_names):
-        self.jta = actionlib.SimpleActionClient('arm/arm_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+        self.action_server_client = actionlib.SimpleActionClient('arm/arm_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
        # rospy.loginfo('Waiting for joint trajectory action')
-        self.jta.wait_for_server()
+        self.action_server_client.wait_for_server()
        # rospy.loginfo('Found joint trajectory action')
         self.jtp = rospy.Publisher('arm/arm_controller/command', JointTrajectory, queue_size=1)
         self.joint_names = joint_names
         self.jtp_zeros = np.zeros(len(joint_names))
 
 
-    def move(self, pos, reset=False):
-        #print("in move")
+    def move(self, pos):
         msg = FollowJointTrajectoryActionGoal()
         msg.goal.trajectory.joint_names = self.joint_names
         point = JointTrajectoryPoint()
         point.positions = pos
-        if(reset):
-            point.velocities = np.array([100,100,100,100])
         point.time_from_start = rospy.Duration(1.0/60.0)
         msg.goal.trajectory.points.append(point)
-        if(reset):
-            exec_timeout = rospy.Duration(10)
-            prmpt_timeout = rospy.Duration(5)
-            self.jta.send_goal_and_wait(msg.goal, exec_timeout, prmpt_timeout)
-            return True
-       # print("sending goal")
-        self.jta.send_goal(msg.goal)
+        self.action_server_client.send_goal(msg.goal)
         return True
-        #while(not self.jta.wait_for_result()):
-            #pass
-       # print("done moving")
 
     def move_jtp(self, pos):
         jtp_msg = JointTrajectory()
@@ -82,7 +70,7 @@ class AllJoints:
         point.positions = pos
         point.time_from_start = rospy.Duration(0.0001)
         msg.goal.trajectory.points.append(point)
-        self.jta.send_goal(msg.goal)
+        self.action_server_client.send_goal(msg.goal)
 
     def reset_move_jtp(self):
         jtp_msg = JointTrajectory()
@@ -94,19 +82,23 @@ class AllJoints:
         self.jtp.publish(jtp_msg)
 
 class ArmEnvironment(gym.Env):
-    def __init__(self, static_goal):
+    def __init__(self, static_goal, slow_step=False, larger_radius=False):
         self.max_sim_time = 15
-        self.goal_radius = 0.06 #should equal sphere radius in ball.urdf
-        self.distance_reward_coeff = 1
-        self.min_movement_threshold = 0.005
+        if(larger_radius):
+            self.goal_radius = 0.06 #sphere radius in ball.urdf is slightly bigger to improve visuals
+        else:
+            self.goal_radius = 0.05
+        self.distance_reward_coeff = 5
         self.static_goal_pos = np.array([0.2,0.1,0.15])
         self.static_goal = static_goal
+        self.slow_step = slow_step
+        self.eef_pos = np.zeros(3)
 
         self.zero = np.array([0,0,0,0])
         #rospy.init_node('joint_position_node')
         self.num_joints = 4
         self.observation_space = spaces.Box(np.array([-1.5,-1.5,-1.5,-2.5,-0.4,-0.4,0]), np.array([1.5,1.5,1.5,2.5,0.4,0.4,0.4]))#(self.num_joints + 3,)
-        self.action_space = spaces.Box(np.array([-0.5,-0.5,-0.5,-0.5]), np.array([0.5,0.5,0.5,0.5]))
+        self.action_space = spaces.Box(np.array([-0.2,-0.2,-0.2,-0.2]), np.array([0.2,0.2,0.2,0.2]))
         self.joint_names = ['plat_joint','shoulder_joint','forearm_joint','wrist_joint']
         self.all_joints = AllJoints(self.joint_names)
         self.starting_pos = np.array([0, 0, 0, 0])
@@ -119,7 +111,7 @@ class ArmEnvironment(gym.Env):
                 x_y = np.random.uniform(low = -0.4, high = 0.4, size = 2)
                 z = np.random.uniform(low = 0, high = 0.4, size = 1)
                 self.goal_pos = np.concatenate([x_y,z],axis=0)
-                if(np.linalg.norm(self.goal_pos)<0.5):
+                if(np.linalg.norm(self.goal_pos)<0.4):
                     break
         rospy.loginfo("Goal position defined")
         self.pause_physics_proxy = rospy.ServiceProxy('/gazebo/pause_physics',Empty, persistent=False)
@@ -195,6 +187,7 @@ class ArmEnvironment(gym.Env):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         
         
+        
         self.joint_pos_high = np.array([1.5, 1.5, 1.5, 2.5])
         self.joint_pos_low = np.array([-1.5, -1.5, -1.5, -2.5])
         self.joint_pos_range = self.joint_pos_high-self.joint_pos_low
@@ -233,6 +226,7 @@ class ArmEnvironment(gym.Env):
         joint_angles = self.joint_state
         current_sim_time = self.current_time
         trans = self.tf_buffer.lookup_transform('world', 'wrist_link', rospy.Time())
+        rospy.sleep(0.1)
         end = self.tf_buffer.lookup_transform('world', 'dummy_eef', rospy.Time())
         if(trans.transform.translation.z<=0.02 or end.transform.translation.z<=0.01): 
             self.hit_floor=True
@@ -240,7 +234,7 @@ class ArmEnvironment(gym.Env):
             arrived = True
         else: 
             arrived=False
-        if(current_sim_time>=self.max_sim_time or self.hit_floor):
+        if(self.hit_floor or current_sim_time>=self.max_sim_time):
             time_runout = True
             print("ran out of time or hit floor")
         else:
@@ -274,6 +268,7 @@ class ArmEnvironment(gym.Env):
             y = trans.transform.translation.y
             z = trans.transform.translation.z
             trans = np.array([x,y,z])
+            self.eef_pos = trans
             #print("EEF Position: {}".format(trans))
             
             goal_distance = distance.euclidean(trans,self.goal_pos)
@@ -287,16 +282,15 @@ class ArmEnvironment(gym.Env):
         if(self.static_goal):
             self.goal_pos = self.static_goal_pos
         else:
-            x_y = np.random.uniform(low = -0.4, high = 0.4, size = 2)
-            z = np.random.uniform(low = 0, high = 0.4, size = 1)
-            self.goal_pos = np.concatenate([x_y,z],axis=0)
-
-            # while(True):
-            #     x_y = np.random.uniform(low = -0.4, high = 0.4, size = 2)
-            #     z = np.random.uniform(low = 0, high = 0.4, size = 1)
-            #     self.goal_pos = np.concatenate([x_y,z],axis=0) #np.array([-0.13242582 , 0.29086919 , 0.20275278])
-            #     if(np.linalg.norm(self.goal_pos)<0.5):
-            #         break
+            # x_y = np.random.uniform(low = -0.4, high = 0.4, size = 2)
+            # z = np.random.uniform(low = 0, high = 0.4, size = 1)
+            # self.goal_pos = np.concatenate([x_y,z],axis=0)
+            while(True):
+                x_y = np.random.uniform(low = -0.4, high = 0.4, size = 2)
+                z = np.random.uniform(low = 0, high = 0.4, size = 1)
+                self.goal_pos = np.concatenate([x_y,z],axis=0) #np.array([-0.13242582 , 0.29086919 , 0.20275278])
+                if(np.linalg.norm(self.goal_pos)<0.4 and np.linalg.norm(self.goal_pos)>0.1):
+                    break
         #rospy.loginfo("Goal position defined")
         #rospy.loginfo("Goal position: "+str(self.goal_pos))
         # self.sphere_urdf = open(sphere_dir, "r").read()
@@ -328,23 +322,13 @@ class ArmEnvironment(gym.Env):
 
     def get_reward(self, time_runout, arrive):
         reward = -1*self.distance_reward_coeff*self.get_goal_distance()
-       # if((self.last_goal_distance-self.get_goal_distance())>0):
-        #    reward = -10+self.distance_reward_coeff*(self.last_goal_distance-self.get_goal_distance())-10*self.get_goal_distance()
-        #if((self.last_goal_distance-self.get_goal_distance())<0):
-        #    reward = -10+300*(self.last_goal_distance-self.get_goal_distance())-10*self.get_goal_distance()
         if(self.hit_floor):
-            reward = reward - 200.0
+            reward = reward - 50.0
         if(time_runout and not arrive):
-            reward = reward - 100.0
+            reward = reward - 25.0
         if(arrive):
-            print("arrived")
-            reward += 100.0
-        # if((self.last_goal_distance-self.get_goal_distance())<0):
-        #     reward += 10
-        #     print("moving towards target")
-       
-        #self.last_goal_distance = self.get_goal_distance()
-        
+            print("Arrived at goal")
+            reward += 25.0
         return reward
         
     def reset(self):
@@ -382,10 +366,6 @@ class ArmEnvironment(gym.Env):
             print('arm/controller_manager/switch_controller service call failed')
 
 
-        # self.all_joints.move(self.starting_pos, reset=True)
-        # rospy.sleep(3.5)
-
-
         self.set_new_goal()
         rospy.sleep(1)
        # rospy.sleep(3)
@@ -405,15 +385,13 @@ class ArmEnvironment(gym.Env):
         
     def step(self, action):
         action = np.array(action)
-        #print("received action: "+str(action))
-       # action = action * self.action_coeff
-       # print("commanded action: "+str(action))
 
         self.joint_pos = np.clip(self.joint_pos + action,a_min=self.joint_pos_low,a_max=self.joint_pos_high)
-        #print("New jointpos: "+str(self.joint_pos))
         self.all_joints.move(self.joint_pos)
-        #print("done moving")
-        rospy.sleep(0.01)
+        if(self.slow_step):
+            rospy.sleep(0.35)
+        else:
+            rospy.sleep(0.01)
         (joint_angles, time_runout, arrived) = self.get_state()
         reward = self.get_reward(time_runout, arrived)
         if(time_runout or arrived):

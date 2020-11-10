@@ -4,26 +4,27 @@ import numpy as np
 
 rospy.init_node("test")
 
-env = ArmEnvironment(static_goal=False)
+env = ArmEnvironment(static_goal=True)
 env.reset()
-# env.__init__(static_goal=False)
-
-# env.set_new_goal()
-# rospy.sleep(2)
-# env.set_new_goal()
-# rospy.sleep(2)
-# env.set_new_goal()
-# rospy.sleep(2)
+rospy.sleep(1)
+print("Goal Distance: ",env.get_goal_distance())
 
 
-# env.unpause_physics()
+while(True):
+    action = input("Enter an action:").split(' ')
+    floatarr = []
+    for i in action:
+        if(i=='0'):
+            floatarr.append(0)
+        else:
+            floatarr.append(float(i))
+    action = np.array(floatarr)
+    env.step(floatarr)
+    print("Goal Distance: ",env.get_goal_distance())
+    reset = eval(input("Reset goal?"))
+    if(reset):
+        env.set_new_goal()
 
-
-alljoints = AllJoints(env.joint_names)
-
-pos = np.array([1,1,1,1])
-alljoints.move(pos)
-rospy.sleep(3)
 
 # alljoints.move(pos)
 # #rospy.sleep(3)
