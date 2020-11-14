@@ -4,7 +4,7 @@ Application of reinforcement learning to a simulated ROS based robotic arm, to a
 ## Info
 
 All scripts for testing/training/collecting data for graphs etc. can be found in [src/arm_bringup/scripts](https://github.com/dVeon-loch/EEE4022_RL_Arm_noetic/tree/master/src/arm_bringup/scripts).
-All models that represent those mentioned in the report are contained in the separate model folders. Note the suffixes. In order to run the various algorithms the "insert_algorithm_acronym"_train_test.py files must be used. In order to train, set the testing variable to False. In order to train with a static goal, set static_goal to True (and the opposite for a moving goal). To set number of test episodes, the num_tests variable is used.
+All models that represent those mentioned in the report are contained in the separate model folders (Please contact Devon Bloch if trained models or raw data files are needed). Note the suffixes. In order to run the various algorithms the "insert_algorithm_acronym"_train_test.py files must be used. In order to train, set the testing variable to False. In order to train with a static goal, set static_goal to True (and the opposite for a moving goal). To set number of test episodes, the num_tests variable is used.
 
 The "slow" suffix refers to the hardcoded delay that was added to deal with the limitations imposed by Gazebo. The delay can be disabled by setting slow_step to False in the train/test code, however this will be much less stable.
 
